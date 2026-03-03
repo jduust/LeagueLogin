@@ -18,7 +18,7 @@ A pre-built installer is provided below for convenience, but **the author makes 
 
 ## Download (pre-built)
 
-[**LeagueLogin-1.0.0-x64.msi**](LeagueLogin-1.0.0-x64.msi)
+[LeagueLogin-1.0.0-x64.msi](https://github.com/jduust/LeagueLogin/releases/download/v1.0.0/LeagueLogin-1.0.0-x64.msi)
 
 Requires Windows 10 or later, x64. No .NET runtime required — it is bundled inside the installer.
 
