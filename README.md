@@ -14,6 +14,9 @@ The code is all here. It is a few hundred lines of straightforward C# WPF. Read 
 
 A pre-built installer is provided below for convenience, but **the author makes no guarantees and you use it at your own risk.**
 
+<img width="360" height="728" alt="billede" src="https://github.com/user-attachments/assets/4b0b1912-652f-4365-8a07-0826da27588d" />
+<img width="320" height="390" alt="billede" src="https://github.com/user-attachments/assets/69e81388-5bbb-4e7e-b316-1c7eccfc82fe" />
+
 ---
 
 ## Download (pre-built)
