@@ -1,0 +1,6 @@
+C:\Users\jakob\Downloads\trayversion\publish\D3DCompiler_47_cor3.dll
+C:\Users\jakob\Downloads\trayversion\publish\PenImc_cor3.dll
+C:\Users\jakob\Downloads\trayversion\publish\PresentationNative_cor3.dll
+C:\Users\jakob\Downloads\trayversion\publish\vcruntime140_cor3.dll
+C:\Users\jakob\Downloads\trayversion\publish\wpfgfx_cor3.dll
+C:\Users\jakob\Downloads\trayversion\publish\LeagueLogin.exe

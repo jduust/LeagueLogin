@@ -1,0 +1,130 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!--
+    Build:
+      wix build installer.wxs -o LeagueLogin-1.0.0-x64.msi
+  -->
+
+  <Package
+    Name="League Login"
+    Version="1.0.0"
+    Manufacturer="LeagueLogin"
+    UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+    Scope="perMachine"
+    InstallerVersion="500">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of League Login is already installed."
+      Schedule="afterInstallInitialize"/>
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high"/>
+
+    <!-- Built-in WiX UI with feature selection (shows checkboxes) -->
+    <ui:WixUI Id="WixUI_FeatureTree"/>
+    <UIRef Id="WixUI_ErrorProgressText"/>
+
+    <!-- Install directory -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LeagueLogin"/>
+    </StandardDirectory>
+
+    <!-- All published files + install folder cleanup -->
+    <ComponentGroup Id="MainComponents" Directory="INSTALLFOLDER">
+      <Files Include="publish\*"/>
+      <Component Id="InstallFolderCleanup" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall"/>
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\LeagueLogin"
+          Name="InstallPath"
+          Type="string"
+          Value="[INSTALLFOLDER]"
+          KeyPath="yes"/>
+      </Component>
+    </ComponentGroup>
+
+    <!-- Start Menu shortcut (always installed) -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="League Login">
+        <Component Id="StartMenuShortcut" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+          <Shortcut
+            Id="AppStartMenuShortcut"
+            Name="League Login"
+            Description="Switch League of Legends accounts"
+            Target="[INSTALLFOLDER]LeagueLogin.exe"
+            WorkingDirectory="INSTALLFOLDER"/>
+          <RemoveFolder Id="RemoveAppMenuFolder" Directory="AppMenuFolder" On="uninstall"/>
+          <RegistryValue
+            Root="HKCU"
+            Key="Software\LeagueLogin\StartMenu"
+            Name="installed"
+            Type="integer"
+            Value="1"
+            KeyPath="yes"/>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Desktop shortcut (optional) -->
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">
+        <Shortcut
+          Id="AppDesktopShortcut"
+          Name="League Login"
+          Description="Switch League of Legends accounts"
+          Target="[INSTALLFOLDER]LeagueLogin.exe"
+          WorkingDirectory="INSTALLFOLDER"/>
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\LeagueLogin\Desktop"
+          Name="installed"
+          Type="integer"
+          Value="1"
+          KeyPath="yes"/>
+      </Component>
+    </StandardDirectory>
+
+    <!-- Run at Windows login (optional) -->
+    <Component Id="RunOnLogin" Guid="E5F6A7B8-C9D0-1234-EF01-345678901234" Directory="INSTALLFOLDER">
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\Microsoft\Windows\CurrentVersion\Run"
+        Name="LeagueLogin"
+        Type="string"
+        Value="[INSTALLFOLDER]LeagueLogin.exe"
+        KeyPath="yes"/>
+    </Component>
+
+    <!--
+      Features — shown as checkboxes in the installer UI.
+      Main app is required. Desktop shortcut and Run on login are optional,
+      both ticked by default (Level="1"). Set Level="2" to untick by default.
+    -->
+    <Feature Id="MainFeature"
+             Title="League Login"
+             Description="The League Login application (required)."
+             Level="1"
+             Display="expand">
+
+      <ComponentGroupRef Id="MainComponents"/>
+      <ComponentRef Id="StartMenuShortcut"/>
+
+      <Feature Id="DesktopShortcutFeature"
+               Title="Desktop shortcut"
+               Description="Add a shortcut to your desktop."
+               Level="1">
+        <ComponentRef Id="DesktopShortcut"/>
+      </Feature>
+
+      <Feature Id="RunOnLoginFeature"
+               Title="Run at Windows login"
+               Description="Start League Login automatically when you log in to Windows."
+               Level="1">
+        <ComponentRef Id="RunOnLogin"/>
+      </Feature>
+
+    </Feature>
+
+  </Package>
+</Wix>
