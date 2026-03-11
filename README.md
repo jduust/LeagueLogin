@@ -18,9 +18,11 @@ A pre-built installer is provided below for convenience, but **the author makes 
 
 ## Download (pre-built)
 
-[**LeagueLogin-1.0.0-x64.msi**](LeagueLogin-1.0.0-x64.msi)
+[**LeagueLogin-1.0.0-x64.msi**](https://github.com/jduust/LeagueLogin/releases/download/v1.0.0/LeagueLogin-1.0.0-x64.msi)
 
 Requires Windows 10 or later, x64. No .NET runtime required — it is bundled inside the installer.
+
+> **Windows SmartScreen warning:** When you run the installer, Windows may show a blue "Windows protected your PC" dialog. Click **More info → Run anyway**. This happens because the app is new and unsigned — it is not malicious. The warning will go away as the app accumulates download history.
 
 ---
 

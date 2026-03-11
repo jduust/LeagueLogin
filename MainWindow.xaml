@@ -44,12 +44,12 @@
                         shell:WindowChrome.IsHitTestVisibleInChrome="True">
                 <Button Style="{StaticResource WinCtrlButton}"
                         Content="─"
-                        ToolTip="Minimise"
+                        ToolTip="Minimize"
                         Click="WinMin_Click"/>
                 <Button x:Name="MaxRestoreBtn"
                         Style="{StaticResource WinCtrlButton}"
                         Content="□"
-                        ToolTip="Maximise"
+                        ToolTip="Maximize"
                         Click="WinMaxRestore_Click"/>
                 <Button Style="{StaticResource WinCtrlCloseButton}"
                         Content="✕"

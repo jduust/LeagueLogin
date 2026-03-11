@@ -1,0 +1,23 @@
+<!--
+  TrimmerRoots.xml
+  ~~~~~~~~~~~~~~~~
+  Keeps the WPF and Windows Forms assemblies alive during publish trimming so
+  that XAML-loaded types and designer-generated code are never cut.
+
+  Without this, partial trimming is usually fine, but add any additional
+  namespaces/types here if you see MissingMethodException at runtime after
+  publishing with PublishTrimmed=true.
+-->
+<linker>
+  <!-- Preserve all public types in WPF presentation assemblies -->
+  <assembly fullname="PresentationCore"         preserve="all"/>
+  <assembly fullname="PresentationFramework"    preserve="all"/>
+  <assembly fullname="WindowsBase"              preserve="all"/>
+  <assembly fullname="System.Xaml"              preserve="all"/>
+
+  <!-- Preserve Windows Forms (used by TrayManager / NotifyIcon) -->
+  <assembly fullname="System.Windows.Forms"     preserve="all"/>
+
+  <!-- Preserve the app itself so no entry-point trimming occurs -->
+  <assembly fullname="LeagueLogin"              preserve="all"/>
+</linker>

@@ -15,11 +15,11 @@
 
 [Setup]
 AppName=League Login
-AppVersion=1.0.0
+AppVersion=1.0.1
 AppPublisher=LeagueLogin
-AppPublisherURL=https://github.com/
-AppSupportURL=https://github.com/
-AppUpdatesURL=https://github.com/
+AppPublisherURL=https://github.com/jduust/LeagueLogin
+AppSupportURL=https://github.com/jduust/LeagueLogin
+AppUpdatesURL=https://github.com/jduust/LeagueLogin
 
 ; Install under C:\Program Files\LeagueLogin for all users
 DefaultDirName={autopf}\LeagueLogin

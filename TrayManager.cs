@@ -15,6 +15,8 @@ namespace LeagueLogin
     /// </summary>
     internal sealed class TrayManager : IDisposable
     {
+        private const string GitHubUrl = "https://github.com/jduust/LeagueLogin";
+
         private readonly NotifyIcon _ni;
         private readonly Action<string> _onAccountClick;
         private readonly Action _onShowWindow;
@@ -66,9 +68,10 @@ namespace LeagueLogin
 
         private ContextMenuStrip BuildContextMenu(IReadOnlyList<string> accounts)
         {
-            var bg   = Color.FromArgb(0x14, 0x14, 0x2A);
-            var fg   = Color.FromArgb(0xE8, 0xE0, 0xD0);
-            var acc  = Color.FromArgb(0xC8, 0x9B, 0x3C);
+            var bg  = Color.FromArgb(0x14, 0x14, 0x2A);
+            var fg  = Color.FromArgb(0xE8, 0xE0, 0xD0);
+            var acc = Color.FromArgb(0xC8, 0x9B, 0x3C);
+            var dim = Color.FromArgb(0x7A, 0x7A, 0x9A);
 
             var menu = new ContextMenuStrip { BackColor = bg, ForeColor = fg, RenderMode = ToolStripRenderMode.System };
 
@@ -93,6 +96,7 @@ namespace LeagueLogin
             }
 
             menu.Items.Add(new ToolStripSeparator());
+
             var show = new ToolStripMenuItem("Open Window");
             show.Click += (_, _) => _onShowWindow();
             menu.Items.Add(show);
@@ -101,7 +105,13 @@ namespace LeagueLogin
             logs.Click += (_, _) => OpenLogs();
             menu.Items.Add(logs);
 
+            var github = new ToolStripMenuItem("GitHub (Updates)");
+            github.Click += (_, _) =>
+                Process.Start(new ProcessStartInfo(GitHubUrl) { UseShellExecute = true });
+            menu.Items.Add(github);
+
             menu.Items.Add(new ToolStripSeparator());
+
             var exit = new ToolStripMenuItem("Exit");
             exit.Click += (_, _) => _onExit();
             menu.Items.Add(exit);
@@ -109,7 +119,7 @@ namespace LeagueLogin
             return menu;
         }
 
-        // ── Jump List ──────────────────────────────────────────────────
+        // ── Jump List ─────────────────────────────────────────────────
 
         private static void BuildJumpList(IReadOnlyList<string> accounts)
         {
@@ -164,16 +174,16 @@ namespace LeagueLogin
             try
             {
                 using var bmp = new Bitmap(32, 32);
-                using var g = Graphics.FromImage(bmp);
+                using var g   = Graphics.FromImage(bmp);
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.Clear(Color.Transparent);
                 using var bgBrush = new SolidBrush(Color.FromArgb(0xC8, 0x9B, 0x3C));
                 g.FillEllipse(bgBrush, 1, 1, 30, 30);
                 using var fgBrush = new SolidBrush(Color.FromArgb(0x0D, 0x0D, 0x1A));
-                using var font = new Font("Segoe UI", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
+                using var font    = new Font("Segoe UI", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
                 g.DrawString("L", font, fgBrush, 7f, 5f);
                 var hIcon = bmp.GetHicon();
-                var icon = (Icon)Icon.FromHandle(hIcon).Clone();
+                var icon  = (Icon)Icon.FromHandle(hIcon).Clone();
                 DestroyIcon(hIcon);
                 return icon;
             }

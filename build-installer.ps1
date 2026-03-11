@@ -7,6 +7,7 @@
 #
 # One-time setup to enable MSI builds:
 #   dotnet tool install --global wix
+#   wix extension add --global WixToolset.UI.wixext/6.0.2
 
 param(
     [switch]$ExeOnly
@@ -17,7 +18,7 @@ $ErrorActionPreference = "Stop"
 
 $project = "LeagueLogin.csproj"
 $outDir  = "publish"
-$version = "1.0.0"
+$version = "1.0.1"
 
 # --- Step 1: Publish ---
 
@@ -48,6 +49,15 @@ $sizeMB = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host "Published: $exe ($sizeMB MB)"
 Write-Host "No .NET runtime needed on target machines - it is bundled inside the exe."
 
+# --- Optional: sign the EXE (requires a code-signing certificate) ---
+# Uncomment and fill in your certificate thumbprint or PFX path.
+# See SIGNING.md for full instructions.
+#
+# $thumb = "YOUR_CERT_THUMBPRINT_HERE"
+# signtool sign /sha1 $thumb /tr http://timestamp.digicert.com /td sha256 /fd sha256 $exe
+# if ($LASTEXITCODE -ne 0) { Write-Error "signtool failed."; exit 1 }
+# Write-Host "EXE signed."
+
 if ($ExeOnly) {
     Write-Host "Done. Skipping MSI (-ExeOnly was set)."
     exit 0
@@ -75,6 +85,9 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "WiX build failed."
     exit 1
 }
+
+# --- Optional: sign the MSI too ---
+# signtool sign /sha1 $thumb /tr http://timestamp.digicert.com /td sha256 /fd sha256 $msiName
 
 if (Test-Path $msiName) {
     $msiMB = [math]::Round((Get-Item $msiName).Length / 1MB, 1)

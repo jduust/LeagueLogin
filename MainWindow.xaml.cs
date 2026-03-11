@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,31 +15,68 @@ namespace LeagueLogin
 {
     public partial class MainWindow : Window
     {
-        private const double TitleBarHeight   = 34;
-        private const double ContentMargins   = 40;
-        private const double HeaderHeight     = 30;
-        private const double SeparatorHeight  = 5;
-        private const double StatusBarHeight  = 44;
-        private const double AccountRowPx     = 70;
-        private const double EmptyStateHeight = 110;
-        private const double ScreenPadding    = 56;
+        private const double TitleBarHeight      = 34;
+        private const double ContentMargins      = 40;
+        private const double HeaderHeight        = 30;
+        private const double SeparatorHeight     = 5;
+        private const double StatusBarHeight     = 44;
+        private const double AccountRowPx        = 70;
+        private const double EmptyStateHeight    = 110;
+        private const double ScreenPadding       = 56;
+        // Window stops growing after this many accounts; scrollbar takes over
+        private const int    MaxVisibleAccounts  = 5;
 
         private bool        _busy;
         private TrayManager _tray = null!;
+
+        // P/Invoke
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [DllImport("user32.dll")] private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+        private const int  SW_RESTORE            = 9;
+        private const byte VK_MENU               = 0x12;
+        private const uint KEYEVENTF_KEYUP        = 0x0002;
+        private const uint KEYEVENTF_EXTENDEDKEY  = 0x0001;
 
         public MainWindow()
         {
             InitializeComponent();
             _tray = new TrayManager(
                 onAccountClick: async name => await LaunchWithAccount(name),
-                onShowWindow:   ShowWindow,
+                onShowWindow:   BringToFront,
                 onExit:         ExitApp);
             Loaded += (_, _) => RefreshAccounts();
         }
 
-        private void ShowWindow()
+        private void BringToFront()
         {
-            Dispatcher.Invoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
+            Dispatcher.Invoke(() =>
+            {
+                // 1. Let WPF know the window should be visible
+                Show();
+                WindowState = WindowState.Normal;
+
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    // 2. Win32 SW_RESTORE: properly un-hides the window from any
+                    //    state. WPF's Show() alone can leave it in a
+                    //    minimized-but-visible-in-taskbar limbo when called on a
+                    //    window that was hidden while its state was still Normal.
+                    ShowWindow(hwnd, SW_RESTORE);
+
+                    // 3. Simulate Alt to grant this thread foreground permission.
+                    //    Without it, SetForegroundWindow silently fails from a
+                    //    WinForms tray-icon thread.
+                    keybd_event(VK_MENU, 0, KEYEVENTF_EXTENDEDKEY, 0);
+                    keybd_event(VK_MENU, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
+
+                    // 4. Bring to front
+                    SetForegroundWindow(hwnd);
+                }
+
+                Activate();
+            });
         }
 
         private void MinimizeToTray()
@@ -155,10 +193,14 @@ namespace LeagueLogin
 
         private void AutoSizeWindow(int accountCount)
         {
-            double screenMax  = SystemParameters.WorkArea.Height - ScreenPadding;
-            double listHeight = accountCount == 0 ? EmptyStateHeight : accountCount * AccountRowPx;
-            double ideal      = TitleBarHeight + ContentMargins + HeaderHeight
-                              + SeparatorHeight + 16 + listHeight + StatusBarHeight;
+            // Cap the window at MaxVisibleAccounts rows; beyond that the
+            // ScrollViewer handles overflow with the themed scrollbar.
+            int    visibleRows = Math.Min(accountCount, MaxVisibleAccounts);
+            double listHeight  = accountCount == 0 ? EmptyStateHeight : visibleRows * AccountRowPx;
+            double ideal       = TitleBarHeight + ContentMargins + HeaderHeight
+                               + SeparatorHeight + 16 + listHeight + StatusBarHeight;
+
+            double screenMax   = SystemParameters.WorkArea.Height - ScreenPadding;
             Height = Math.Min(Math.Max(ideal, MinHeight), screenMax);
         }
 
