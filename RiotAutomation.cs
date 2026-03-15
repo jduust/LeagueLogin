@@ -108,7 +108,12 @@ namespace LeagueLogin.Services
                     continue;
                 }
 
-                // ── 3. Locate the sign-in button ──────────────────────────────
+                // ── 3. Locate the sign-in button BEFORE filling fields ────────
+                // Important: the button's DefaultAction changes from a minority
+                // value (e.g. "klik") to a different value (e.g. "tryk") once
+                // credentials are typed in, breaking the heuristic. We must
+                // find it now and cache its RuntimeId so we can re-find the
+                // exact same element on retries without re-running the heuristic.
                 var loginButton = FindSignInButton(window, log);
                 if (loginButton == null)
                 {
@@ -116,6 +121,7 @@ namespace LeagueLogin.Services
                     Thread.Sleep(OuterRetryDelayMs);
                     continue;
                 }
+                var loginButtonRuntimeId = loginButton.Properties.RuntimeId.Value;
 
                 // ── 4. Locate the input fields ────────────────────────────────
                 var usernameBox = window.FindFirstDescendant(cf =>
@@ -142,8 +148,9 @@ namespace LeagueLogin.Services
                 }
 
                 // ── 6. Post-submit retry loop ─────────────────────────────────
-                // Re-finds the button on each iteration so a UI refresh (React
-                // re-render) doesn't leave us with a stale element reference.
+                // Re-finds the button by RuntimeId (stable across React
+                // re-renders) rather than re-running the heuristic, which
+                // breaks once the DefaultAction is no longer a minority value.
                 var sub = DateTime.UtcNow.AddSeconds(PostSubmitTimeoutSec);
                 while (DateTime.UtcNow < sub)
                 {
@@ -163,22 +170,22 @@ namespace LeagueLogin.Services
                         return true;
                     }
 
-                    // Still on login screen — re-find the button fresh each time.
-                    // Riot's React renderer may have swapped out the element.
                     try
                     {
-                        usernameBox.Text = username;
-                        passwordBox.Text = password;
-                        var freshButton = FindSignInButton(window, null);
+                        // Re-find by RuntimeId — the heuristic no longer works
+                        // after credentials are typed in.
+                        var freshButton = window
+                            .FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button))
+                            .FirstOrDefault(b => b.Properties.RuntimeId.Value.SequenceEqual(loginButtonRuntimeId));
+
                         if (freshButton == null)
                         {
-                            // Button vanished — page is probably transitioning.
-                            // Break to the outer loop to re-attach cleanly.
                             Log("Sign-in button disappeared after submit - re-searching from outer loop...");
                             break;
                         }
 
-
+                        usernameBox.Text = username;
+                        passwordBox.Text = password;
                         if (freshButton.Patterns.LegacyIAccessible.TryGetPattern(out var pat2))
                             pat2.DoDefaultAction();
                         Log("Re-submitted sign-in.");

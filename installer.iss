@@ -15,7 +15,7 @@
 
 [Setup]
 AppName=League Login
-AppVersion=1.0.1
+AppVersion=1.0.2
 AppPublisher=LeagueLogin
 AppPublisherURL=https://github.com/jduust/LeagueLogin
 AppSupportURL=https://github.com/jduust/LeagueLogin

@@ -9,10 +9,10 @@
     <AssemblyName>LeagueLogin</AssemblyName>
     <RootNamespace>LeagueLogin</RootNamespace>
     <Platforms>x64</Platforms>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Company>LeagueLogin</Company>
     <Product>League Login</Product>
-    <FileVersion>1.0.1</FileVersion>
+    <FileVersion>1.0.2</FileVersion>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
 
 
