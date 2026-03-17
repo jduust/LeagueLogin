@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using LeagueLogin.Services;
 
@@ -33,11 +35,7 @@ namespace LeagueLogin.Services
         private const int KillWaitTimeoutMs    = 5000;
 
         // How long to wait between outer search retries (ms)
-        private const int OuterRetryDelayMs    = 1000;
-        // How long to wait between inner submit retries (ms)
-        private const int InnerRetryDelayMs    = 600;
-        // How many seconds to keep retrying after the first submit attempt
-        private const int PostSubmitTimeoutSec = 15;
+        private const int OuterRetryDelayMs = 1000;
 
         public static void KillLeagueProcesses()
         {
@@ -108,21 +106,6 @@ namespace LeagueLogin.Services
                     continue;
                 }
 
-                // ── 3. Locate the sign-in button BEFORE filling fields ────────
-                // Important: the button's DefaultAction changes from a minority
-                // value (e.g. "klik") to a different value (e.g. "tryk") once
-                // credentials are typed in, breaking the heuristic. We must
-                // find it now and cache its RuntimeId so we can re-find the
-                // exact same element on retries without re-running the heuristic.
-                var loginButton = FindSignInButton(window, log);
-                if (loginButton == null)
-                {
-                    Log("Sign-in button not found...");
-                    Thread.Sleep(OuterRetryDelayMs);
-                    continue;
-                }
-                var loginButtonRuntimeId = loginButton.Properties.RuntimeId.Value;
-
                 // ── 4. Locate the input fields ────────────────────────────────
                 var usernameBox = window.FindFirstDescendant(cf =>
                     cf.ByAutomationId("username")
@@ -138,25 +121,25 @@ namespace LeagueLogin.Services
                     continue;
                 }
 
-                // ── 5. Fill and submit ────────────────────────────────────────
-                usernameBox.Text = username;
-                passwordBox.Text = password;
-                if (loginButton.Patterns.LegacyIAccessible.TryGetPattern(out var pat))
-                {
-                    pat.DoDefaultAction();
-                    Log("Sign-in invoked.");
-                }
+                // ── 5. Fill fields ────────────────────────────────────────────
+                TypeIntoField(usernameBox, username);
+                TypeIntoField(passwordBox, password);
 
-                // ── 6. Post-submit retry loop ─────────────────────────────────
-                // Re-finds the button by RuntimeId (stable across React
-                // re-renders) rather than re-running the heuristic, which
-                // breaks once the DefaultAction is no longer a minority value.
-                var sub = DateTime.UtcNow.AddSeconds(PostSubmitTimeoutSec);
-                while (DateTime.UtcNow < sub)
-                {
-                    Thread.Sleep(InnerRetryDelayMs);
+                // Press Enter to submit — more reliable than invoking the button
+                // via DoDefaultAction, which doesn't always trigger React's submit.
+                passwordBox.Focus();
+                Keyboard.Type(VirtualKeyShort.RETURN);
+                Log("Sign-in invoked.");
 
-                    // Success: both fields disappeared → login was accepted
+                // ── 6. Check + retry ──────────────────────────────────────────
+                const int MaxSubmitAttempts = 3;
+                const int PostSubmitWaitMs  = 3000;
+                const int PreRetryDelayMs   = 500;
+
+                for (int attempt = 1; attempt <= MaxSubmitAttempts; attempt++)
+                {
+                    Thread.Sleep(PostSubmitWaitMs);
+
                     var uCheck = window.FindFirstDescendant(cf =>
                         cf.ByAutomationId("username")
                           .And(cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)));
@@ -170,29 +153,12 @@ namespace LeagueLogin.Services
                         return true;
                     }
 
-                    try
+                    if (attempt < MaxSubmitAttempts)
                     {
-                        // Re-find by RuntimeId — the heuristic no longer works
-                        // after credentials are typed in.
-                        var freshButton = window
-                            .FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button))
-                            .FirstOrDefault(b => b.Properties.RuntimeId.Value.SequenceEqual(loginButtonRuntimeId));
-
-                        if (freshButton == null)
-                        {
-                            Log("Sign-in button disappeared after submit - re-searching from outer loop...");
-                            break;
-                        }
-
-                        usernameBox.Text = username;
-                        passwordBox.Text = password;
-                        if (freshButton.Patterns.LegacyIAccessible.TryGetPattern(out var pat2))
-                            pat2.DoDefaultAction();
-                        Log("Re-submitted sign-in.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Log("Re-submit error: " + ex.Message);
+                        Log($"Login not accepted after attempt {attempt}, retrying...");
+                        Thread.Sleep(PreRetryDelayMs);
+                        Keyboard.Type(VirtualKeyShort.RETURN);
+                        Log($"Sign-in re-invoked (attempt {attempt + 1}).");
                     }
                 }
 
@@ -204,27 +170,17 @@ namespace LeagueLogin.Services
             return false;
         }
 
-        private static AutomationElement? FindSignInButton(AutomationElement window, Action<string>? log)
+        // ── Input helpers ─────────────────────────────────────────────
+        // Direct .Text assignment bypasses React's synthetic event system —
+        // the UI sees the value but never fires onChange, so the submit button
+        // stays disabled. Keyboard simulation fires proper DOM events.
+
+        private static void TypeIntoField(AutomationElement field, string text)
         {
-            var all = window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button));
-            if (all.Length == 0) return null;
-
-            var tagged = new List<(AutomationElement E, string A)>();
-            foreach (var btn in all)
-                if (btn.Patterns.LegacyIAccessible.TryGetPattern(out var p) && !string.IsNullOrWhiteSpace(p.DefaultAction))
-                    tagged.Add((btn, p.DefaultAction));
-
-            if (tagged.Count == 0) return null;
-
-            var minority = tagged.GroupBy(t => t.A, StringComparer.OrdinalIgnoreCase)
-                                 .OrderBy(g => g.Count()).First();
-            var majority = tagged.GroupBy(t => t.A, StringComparer.OrdinalIgnoreCase)
-                                 .OrderByDescending(g => g.Count()).First();
-
-            if (minority.Key.Equals(majority.Key, StringComparison.OrdinalIgnoreCase)) return null;
-
-            log?.Invoke("Sign-in outlier: " + minority.Key);
-            return minority.First().E;
+            field.Focus();
+            // Select all existing content and replace with new text
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Keyboard.Type(text);
         }
 
         private static string? FindRiotClientExe()

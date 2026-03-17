@@ -18,7 +18,7 @@ $ErrorActionPreference = "Stop"
 
 $project = "LeagueLogin.csproj"
 $outDir  = "publish"
-$version = "1.0.2"
+$version = "1.0.3"
 
 # --- Step 1: Publish ---
 

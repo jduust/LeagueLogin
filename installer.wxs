@@ -3,12 +3,12 @@
 
   <!--
     Build:
-      wix build installer.wxs -o LeagueLogin-1.0.0-x64.msi
+      wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.0.0-x64.msi
   -->
 
   <Package
     Name="League Login"
-    Version="1.0.2"
+    Version="1.0.3"
     Manufacturer="LeagueLogin"
     UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
     Scope="perMachine"
@@ -20,9 +20,27 @@
 
     <MediaTemplate EmbedCab="yes" CompressionLevel="high"/>
 
-    <!-- Built-in WiX UI with feature selection (shows checkboxes) -->
-    <ui:WixUI Id="WixUI_FeatureTree"/>
+    <!--
+      WixUI_InstallDir: Welcome -> License -> InstallDir -> Progress -> Finish.
+      No feature-tree disk icons. We inject our own OptionsDlg into the sequence.
+    -->
+    <ui:WixUI Id="WixUI_InstallDir"/>
     <UIRef Id="WixUI_ErrorProgressText"/>
+
+    <!-- Custom installer graphics (BMP files in project root) -->
+    <WixVariable Id="WixUILicenseRtf" Value="Assets/license.rtf"/>
+    <WixVariable Id="WixUIBannerBmp"  Value="Assets/banner.bmp"/>
+    <WixVariable Id="WixUIDialogBmp"  Value="Assets/dialog.bmp"/>
+
+    <!-- Required by WixUI_InstallDir -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER"/>
+
+    <!--
+      Optional feature properties set by checkboxes in OptionsDlg.
+      Default "1" = ticked. Set to "" to untick by default.
+    -->
+    <Property Id="INSTALL_DESKTOP" Value="1"/>
+    <Property Id="INSTALL_STARTUP" Value="1"/>
 
     <!-- Install directory -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -66,9 +84,10 @@
       </Directory>
     </StandardDirectory>
 
-    <!-- Desktop shortcut (optional) -->
+    <!-- Desktop shortcut — only installed when INSTALL_DESKTOP checkbox is ticked -->
     <StandardDirectory Id="DesktopFolder">
-      <Component Id="DesktopShortcut" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123">
+      <Component Id="DesktopShortcut" Guid="D4E5F6A7-B8C9-0123-DEF0-234567890123"
+                 Condition="INSTALL_DESKTOP = &quot;1&quot;">
         <Shortcut
           Id="AppDesktopShortcut"
           Name="League Login"
@@ -85,8 +104,9 @@
       </Component>
     </StandardDirectory>
 
-    <!-- Run at Windows login (optional) -->
-    <Component Id="RunOnLogin" Guid="E5F6A7B8-C9D0-1234-EF01-345678901234" Directory="INSTALLFOLDER">
+    <!-- Run at Windows login — only installed when INSTALL_STARTUP checkbox is ticked -->
+    <Component Id="RunOnLogin" Guid="E5F6A7B8-C9D0-1234-EF01-345678901234" Directory="INSTALLFOLDER"
+               Condition="INSTALL_STARTUP = &quot;1&quot;">
       <RegistryValue
         Root="HKCU"
         Key="Software\Microsoft\Windows\CurrentVersion\Run"
@@ -96,35 +116,87 @@
         KeyPath="yes"/>
     </Component>
 
-    <!--
-      Features — shown as checkboxes in the installer UI.
-      Main app is required. Desktop shortcut and Run on login are optional,
-      both ticked by default (Level="1"). Set Level="2" to untick by default.
-    -->
     <Feature Id="MainFeature"
              Title="League Login"
-             Description="The League Login application (required)."
-             Level="1"
-             Display="expand">
-
+             Description="The League Login application."
+             Level="1">
       <ComponentGroupRef Id="MainComponents"/>
       <ComponentRef Id="StartMenuShortcut"/>
-
-      <Feature Id="DesktopShortcutFeature"
-               Title="Desktop shortcut"
-               Description="Add a shortcut to your desktop."
-               Level="1">
-        <ComponentRef Id="DesktopShortcut"/>
-      </Feature>
-
-      <Feature Id="RunOnLoginFeature"
-               Title="Run at Windows login"
-               Description="Start League Login automatically when you log in to Windows."
-               Level="1">
-        <ComponentRef Id="RunOnLogin"/>
-      </Feature>
-
+      <ComponentRef Id="DesktopShortcut"/>
+      <ComponentRef Id="RunOnLogin"/>
     </Feature>
+
+    <!--
+      ── Custom Options dialog ──────────────────────────────────────────────────
+      Plain checkboxes for the two optional components.
+      Injected between LicenseAgreementDlg and InstallDirDlg.
+    -->
+    <UI>
+
+      <Dialog Id="OptionsDlg" Width="370" Height="270"
+              Title="[ProductName] Setup — Options">
+
+        <Control Id="BannerBitmap" Type="Bitmap"
+                 X="0" Y="0" Width="370" Height="44"
+                 TabSkip="yes" Text="WixUI_Bmp_Banner"/>
+        <Control Id="BannerLine" Type="Line"
+                 X="0" Y="44" Width="370" Height="0"
+                 TabSkip="yes"/>
+
+        <Control Id="Title" Type="Text"
+                 X="15" Y="6" Width="340" Height="15"
+                 Transparent="yes" NoPrefix="yes" TabSkip="yes"
+                 Text="{\WixUI_Font_Title}Installation Options"/>
+        <Control Id="Description" Type="Text"
+                 X="25" Y="24" Width="320" Height="15"
+                 Transparent="yes" NoPrefix="yes" TabSkip="yes"
+                 Text="Choose which optional components to install."/>
+
+        <Control Id="DesktopCB" Type="CheckBox"
+                 X="20" Y="70" Width="310" Height="17" TabSkip="no"
+                 Property="INSTALL_DESKTOP" CheckBoxValue="1"
+                 Text="Create a desktop shortcut"/>
+
+        <Control Id="StartupCB" Type="CheckBox"
+                 X="20" Y="95" Width="310" Height="17" TabSkip="no"
+                 Property="INSTALL_STARTUP" CheckBoxValue="1"
+                 Text="Start League Login automatically when Windows starts"/>
+
+        <Control Id="BottomLine" Type="Line"
+                 X="0" Y="234" Width="370" Height="0"
+                 TabSkip="yes"/>
+
+        <Control Id="Back" Type="PushButton"
+                 X="180" Y="248" Width="56" Height="17" TabSkip="no" Text="&amp;Back">
+          <Publish Event="NewDialog" Value="LicenseAgreementDlg" Condition="1"/>
+        </Control>
+
+        <Control Id="Next" Type="PushButton"
+                 X="236" Y="248" Width="56" Height="17" TabSkip="no"
+                 Default="yes" Text="&amp;Next">
+          <Publish Event="NewDialog" Value="InstallDirDlg" Condition="1"/>
+        </Control>
+
+        <Control Id="Cancel" Type="PushButton"
+                 X="304" Y="248" Width="56" Height="17" TabSkip="no"
+                 Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" Condition="1"/>
+        </Control>
+
+      </Dialog>
+
+      <!--
+        Wire OptionsDlg into the dialog sequence:
+          LicenseAgreementDlg → OptionsDlg → InstallDirDlg
+      -->
+      <Publish Dialog="LicenseAgreementDlg" Control="Next"
+               Event="NewDialog" Value="OptionsDlg" Order="3"
+               Condition="LicenseAccepted = &quot;1&quot;"/>
+
+      <Publish Dialog="InstallDirDlg" Control="Back"
+               Event="NewDialog" Value="OptionsDlg" Condition="1"/>
+
+    </UI>
 
   </Package>
 </Wix>
