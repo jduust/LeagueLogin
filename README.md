@@ -2,6 +2,9 @@
 
 A lightweight Windows tray app for switching between League of Legends accounts. Stores credentials securely in the Windows Credential Manager (DPAPI-encrypted, never plain text) and automates the Riot Client login using UI Automation.
 
+<img width="360" height="519" alt="billede" src="https://github.com/user-attachments/assets/13e6afac-d46c-47b9-85fb-f842468a7055" />
+<img width="320" height="390" alt="billede" src="https://github.com/user-attachments/assets/5226e555-f6bf-47ef-b759-55a29d1ee52b" />
+
 ---
 
 ## Trust & Security
