@@ -30,6 +30,7 @@ dotnet publish $project `
     --self-contained true `
     -p:PublishSingleFile=true `
     -p:EnableCompressionInSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=false `
     -p:DebugType=none `
     -p:DebugSymbols=false `
     --output $outDir
