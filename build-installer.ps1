@@ -47,7 +47,6 @@ if (-not (Test-Path $exe)) {
 
 $sizeMB = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host "Published: $exe ($sizeMB MB)"
-Write-Host "No .NET runtime needed on target machines - it is bundled inside the exe."
 
 # --- Optional: sign the EXE (requires a code-signing certificate) ---
 # Uncomment and fill in your certificate thumbprint or PFX path.
@@ -79,7 +78,7 @@ if (-not $wix) {
 $msiName = "LeagueLogin-$version-x64.msi"
 Write-Host "Building MSI: $msiName"
 
-wix build installer.wxs -ext WixToolset.UI.wixext -o $msiName
+wix build installer.wxs -ext WixToolset.UI.wixext -arch x64 -o $msiName
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "WiX build failed."

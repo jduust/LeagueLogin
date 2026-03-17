@@ -3,7 +3,7 @@
 
   <!--
     Build:
-      wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.0.0-x64.msi
+      wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.0.3-x64.msi
   -->
 
   <Package

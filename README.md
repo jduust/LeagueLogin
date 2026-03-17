@@ -100,7 +100,7 @@ wix extension add --global WixToolset.UI.wixext/6.0.2
 Then publish first (see above), then:
 
 ```powershell
-wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.0.0-x64.msi
+wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.0.3-x64.msi
 ```
 
 Or use the helper script which does both steps:

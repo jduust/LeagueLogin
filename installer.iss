@@ -28,7 +28,7 @@ PrivilegesRequired=admin
 
 ; Single-file output
 OutputDir=installer-output
-OutputBaseFilename=LeagueLogin-Setup-1.0.0
+OutputBaseFilename=LeagueLogin-Setup-1.0.3
 
 ; Compact LZMA2 compression — produces the smallest possible installer
 Compression=lzma2/ultra64
