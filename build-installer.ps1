@@ -18,9 +18,16 @@ $ErrorActionPreference = "Stop"
 
 $project = "LeagueLogin.csproj"
 $outDir  = "publish"
-$version = "1.0.3"
+$version = "1.0.4"
 
-# --- Step 1: Publish ---
+# --- Step 1: Clean previous publish output ---
+
+if (Test-Path $outDir) {
+    Write-Host "Cleaning previous publish output..."
+    Remove-Item -Recurse -Force $outDir
+}
+
+# --- Step 2: Publish ---
 
 Write-Host "Publishing self-contained exe..."
 
@@ -63,7 +70,7 @@ if ($ExeOnly) {
     exit 0
 }
 
-# --- Step 2: Build MSI with WiX v4 ---
+# --- Step 3: Build MSI with WiX v4 ---
 
 $wix = Get-Command "wix" -ErrorAction SilentlyContinue
 if (-not $wix) {

@@ -31,11 +31,9 @@ namespace LeagueLogin.Services
         private const string LaunchArgs =
             "--launch-product=league_of_legends --launch-patchline=live --force-renderer-accessibility";
 
-        private const int LoginTimeoutSeconds  = 120;
-        private const int KillWaitTimeoutMs    = 5000;
-
-        // How long to wait between outer search retries (ms)
-        private const int OuterRetryDelayMs = 1000;
+        private const int LoginTimeoutSeconds = 120;
+        private const int KillWaitTimeoutMs   = 5000;
+        private const int OuterRetryDelayMs   = 1000;
 
         public static void KillLeagueProcesses()
         {
@@ -106,6 +104,16 @@ namespace LeagueLogin.Services
                     continue;
                 }
 
+                // ── 3. Wait for login page to be ready ────────────────────────
+                // FindSignInButton is a page-readiness check — if the button
+                // isn't there yet the login screen hasn't fully loaded.
+                if (FindSignInButton(window, log) == null)
+                {
+                    Log("Sign-in button not found...");
+                    Thread.Sleep(OuterRetryDelayMs);
+                    continue;
+                }
+
                 // ── 4. Locate the input fields ────────────────────────────────
                 var usernameBox = window.FindFirstDescendant(cf =>
                     cf.ByAutomationId("username")
@@ -121,20 +129,13 @@ namespace LeagueLogin.Services
                     continue;
                 }
 
-                // ── 5. Fill fields ────────────────────────────────────────────
-                TypeIntoField(usernameBox, username);
-                TypeIntoField(passwordBox, password);
-
-                // Press Enter to submit — more reliable than invoking the button
-                // via DoDefaultAction, which doesn't always trigger React's submit.
-                passwordBox.Focus();
-                Keyboard.Type(VirtualKeyShort.RETURN);
+                // ── 5. Fill and submit ────────────────────────────────────────
+                FillAndSubmit(usernameBox, passwordBox, username, password, 1, log);
                 Log("Sign-in invoked.");
 
                 // ── 6. Check + retry ──────────────────────────────────────────
                 const int MaxSubmitAttempts = 3;
                 const int PostSubmitWaitMs  = 3000;
-                const int PreRetryDelayMs   = 500;
 
                 for (int attempt = 1; attempt <= MaxSubmitAttempts; attempt++)
                 {
@@ -155,10 +156,17 @@ namespace LeagueLogin.Services
 
                     if (attempt < MaxSubmitAttempts)
                     {
-                        Log($"Login not accepted after attempt {attempt}, retrying...");
-                        Thread.Sleep(PreRetryDelayMs);
-                        Keyboard.Type(VirtualKeyShort.RETURN);
-                        Log($"Sign-in re-invoked (attempt {attempt + 1}).");
+                        int nextAttempt = attempt + 1;
+                        bool slow = nextAttempt >= 3;
+                        Log($"Login not accepted after attempt {attempt}, clearing and retrying (attempt {nextAttempt}{(slow ? ", slow mode" : "")})...");
+
+                        // Clear fields first so React resets state cleanly
+                        ClearField(usernameBox, click: slow);
+                        ClearField(passwordBox, click: slow);
+                        Thread.Sleep(slow ? 300 : 100);
+
+                        FillAndSubmit(usernameBox, passwordBox, username, password, nextAttempt, log);
+                        Log($"Sign-in re-invoked (attempt {nextAttempt}).");
                     }
                 }
 
@@ -170,17 +178,74 @@ namespace LeagueLogin.Services
             return false;
         }
 
-        // ── Input helpers ─────────────────────────────────────────────
-        // Direct .Text assignment bypasses React's synthetic event system —
-        // the UI sees the value but never fires onChange, so the submit button
-        // stays disabled. Keyboard simulation fires proper DOM events.
+        // ── Input helpers ─────────────────────────────────────────────────────
 
-        private static void TypeIntoField(AutomationElement field, string text)
+        private static void FillAndSubmit(
+            AutomationElement usernameBox, AutomationElement passwordBox,
+            string username, string password, int attempt, Action<string>? log)
         {
-            field.Focus();
-            // Select all existing content and replace with new text
+            if (attempt <= 2)
+            {
+                // Attempts 1 & 2: fast — Focus() only, minimal delays
+                TypeIntoField(usernameBox, username, click: false);
+                Thread.Sleep(attempt == 1 ? 100 : 150);
+                TypeIntoField(passwordBox, password, click: false);
+                Thread.Sleep(attempt == 1 ? 100 : 150);
+                passwordBox.Focus();
+            }
+            else
+            {
+                // Attempt 3: slow fallback — Click() each field, longer delays
+                TypeIntoField(usernameBox, username, click: true);
+                Thread.Sleep(250);
+                TypeIntoField(passwordBox, password, click: true);
+                Thread.Sleep(300);
+                passwordBox.Click();
+            }
+
+            Keyboard.Type(VirtualKeyShort.RETURN);
+        }
+
+        private static void ClearField(AutomationElement field, bool click)
+        {
+            if (click) field.Click(); else field.Focus();
+            Thread.Sleep(50);
             Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Keyboard.Type(VirtualKeyShort.DELETE);
+        }
+
+        private static void TypeIntoField(AutomationElement field, string text, bool click)
+        {
+            if (click) field.Click(); else field.Focus();
+            Thread.Sleep(click ? 80 : 40);
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Thread.Sleep(click ? 50 : 20);
             Keyboard.Type(text);
+        }
+
+        // ── Sign-in button heuristic (also used as page-readiness check) ──────
+
+        private static AutomationElement? FindSignInButton(AutomationElement window, Action<string>? log)
+        {
+            var all = window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button));
+            if (all.Length == 0) return null;
+
+            var tagged = new List<(AutomationElement E, string A)>();
+            foreach (var btn in all)
+                if (btn.Patterns.LegacyIAccessible.TryGetPattern(out var p) && !string.IsNullOrWhiteSpace(p.DefaultAction))
+                    tagged.Add((btn, p.DefaultAction));
+
+            if (tagged.Count == 0) return null;
+
+            var minority = tagged.GroupBy(t => t.A, StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(g => g.Count()).First();
+            var majority = tagged.GroupBy(t => t.A, StringComparer.OrdinalIgnoreCase)
+                                 .OrderByDescending(g => g.Count()).First();
+
+            if (minority.Key.Equals(majority.Key, StringComparison.OrdinalIgnoreCase)) return null;
+
+            log?.Invoke("Sign-in outlier: " + minority.Key);
+            return minority.First().E;
         }
 
         private static string? FindRiotClientExe()

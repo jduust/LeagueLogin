@@ -15,7 +15,7 @@
 
 [Setup]
 AppName=League Login
-AppVersion=1.0.3
+AppVersion=1.0.4
 AppPublisher=LeagueLogin
 AppPublisherURL=https://github.com/jduust/LeagueLogin
 AppSupportURL=https://github.com/jduust/LeagueLogin
@@ -28,7 +28,7 @@ PrivilegesRequired=admin
 
 ; Single-file output
 OutputDir=installer-output
-OutputBaseFilename=LeagueLogin-Setup-1.0.3
+OutputBaseFilename=LeagueLogin-Setup-1.0.4
 
 ; Compact LZMA2 compression — produces the smallest possible installer
 Compression=lzma2/ultra64
