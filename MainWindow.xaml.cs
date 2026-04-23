@@ -253,7 +253,7 @@ namespace LeagueLogin
                     SetStatus("Logged in as " + accountName);
                     await Task.Delay(600);
                     MinimizeToTray();
-                }
+                    await Task.Run(() => RiotAutomation.WaitAndClickPlay(Logger.Write));                }
                 else
                 {
                     Logger.Write("Login timed out");
@@ -281,8 +281,28 @@ namespace LeagueLogin
             => WindowState = WindowState == WindowState.Maximized
                 ? WindowState.Normal : WindowState.Maximized;
 
-        private void WinClose_Click(object sender, RoutedEventArgs e) => ExitApp();
+        private void WinClose_Click(object sender, RoutedEventArgs e)
+        {
+            if (Services.Settings.MinimizeOnClose)
+                MinimizeToTray();
+            else
+                ExitApp();
+        }
 
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            e.Cancel = true;
+            if (Services.Settings.MinimizeOnClose)
+                MinimizeToTray();
+            else
+                ExitApp();
+        }
+
+        private void WinSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var w = new SettingsWindow { Owner = this };
+            w.ShowDialog();
+}
         private void Window_StateChanged(object sender, EventArgs e)
         {
             // Redirect taskbar minimize to tray
@@ -297,16 +317,10 @@ namespace LeagueLogin
         {
             base.OnStateChanged(e);
             RootGrid.Margin       = WindowState == WindowState.Maximized ? new Thickness(8) : new Thickness(0);
-            MaxRestoreBtn.Content = WindowState == WindowState.Maximized ? "[ ]" : "[ ]";
-            MaxRestoreBtn.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximise";
+            MaxRestoreBtn.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+            MaxRestoreBtn.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
         }
-
-        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
-        {
-            e.Cancel = true;
-            ExitApp();
-        }
-
+        
         // ── Status helpers ────────────────────────────────────────────
 
         private void SetStatus(string message)

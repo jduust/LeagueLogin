@@ -43,6 +43,11 @@
                         HorizontalAlignment="Right"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True">
                 <Button Style="{StaticResource WinCtrlButton}"
+                        Content="⚙"
+                        ToolTip="Settings"
+                        FontSize="14"
+                        Click="WinSettings_Click"/>
+                <Button Style="{StaticResource WinCtrlButton}"
                         Content="─"
                         ToolTip="Minimize"
                         Click="WinMin_Click"/>
@@ -165,7 +170,6 @@
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom"
                     Foreground="{StaticResource TextMuted}"
-                    Opacity="0.35"
-                    shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    Opacity="0.35"/>
     </Grid>
 </Window>

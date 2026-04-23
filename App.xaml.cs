@@ -23,7 +23,11 @@ namespace LeagueLogin
             }
 
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            new MainWindow().Show();
+            var win = new MainWindow();
+            if (Services.Settings.StartMinimized)
+                win.Hide(); // starts in tray, window never shown
+            else
+                win.Show();
         }
 
         private static async Task RunHeadlessAsync(string accountName)

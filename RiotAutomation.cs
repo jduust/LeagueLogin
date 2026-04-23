@@ -9,7 +9,6 @@ using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 using LeagueLogin.Services;
-
 // Alias avoids ambiguity: FlaUI.Core.Application vs System.Windows.Forms.Application
 using FlaUIApp = FlaUI.Core.Application;
 
@@ -63,6 +62,30 @@ namespace LeagueLogin.Services
             Logger.Write("Launching: " + exe);
             Process.Start(new ProcessStartInfo { FileName = exe, Arguments = LaunchArgs, UseShellExecute = true });
             return true;
+        }
+
+        /// <summary>
+        /// Re-invokes RiotClientServices with the League launch args.
+        /// Because Riot Client is single-instance, the second invocation passes
+        /// the --launch-product request to the already-running client, which then
+        /// queues League to start — identical to clicking the desktop shortcut.
+        /// </summary>
+        public static void LaunchLeague()
+        {
+            var exe = FindRiotClientExe();
+            if (exe == null) { Logger.Write("LaunchLeague: exe not found."); return; }
+
+            Logger.Write("Re-invoking Riot Client to launch League...");
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName       = exe,
+                    Arguments      = "--launch-product=league_of_legends --launch-patchline=live",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { Logger.WriteException("LaunchLeague", ex); }
         }
 
         public static bool WaitAndFillLogin(string username, string password, Action<string>? log = null)
@@ -262,6 +285,98 @@ namespace LeagueLogin.Services
             catch { }
             foreach (var p in FallbackRiotClientPaths)
                 if (File.Exists(p)) return p;
+            return null;
+        }
+
+        public static bool WaitAndClickPlay(Action<string>? log = null)
+        {
+            void Log(string m) => log?.Invoke(m);
+            using var automation = new UIA3Automation();
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+
+            Log("Waiting for Play button on Riot Client home screen...");
+
+            while (DateTime.UtcNow < deadline)
+            {
+                var processes = Process.GetProcessesByName("Riot Client");
+                if (processes.Length == 0) { Thread.Sleep(1000); continue; }
+
+                try
+                {
+                    var app    = FlaUIApp.Attach(processes[0]);
+                    var window = app.GetMainWindow(automation);
+                    if (window == null) { Thread.Sleep(1000); continue; }
+
+                    var walker  = automation.TreeWalkerFactory.GetControlViewWalker();
+                    var playBtn = FindByNameAndType(
+                        window, "Play",
+                        FlaUI.Core.Definitions.ControlType.Button,
+                        walker);
+
+                    if (playBtn != null)
+                    {
+                        Log("Play button found — clicking.");
+                        
+                        // DoDefaultAction() goes through the IAccessible2 proxy directly —
+                        // no clickable-point calculation needed, works even when the window
+                        // isn't foregrounded.
+                        if (playBtn.Patterns.LegacyIAccessible.TryGetPattern(out var legacy))
+                        {
+                            legacy.DoDefaultAction();
+                            Log("DoDefaultAction invoked on Play button.");
+                        }
+                        else
+                        {
+                            // Should never reach here given the accessibility data you shared,
+                            // but fall back to a regular click just in case.
+                            playBtn.Click();
+                        }
+                        return true;
+                    }
+
+                    Log("Play button not visible yet...");
+                }
+                catch (Exception ex) { Log("WaitAndClickPlay: " + ex.Message); }
+
+                Thread.Sleep(1000);
+            }
+
+            Log("Timed out — falling back to re-invocation.");
+            return false;
+        }
+
+        // Walks the full UIA tree recursively, including Chrome-hosted content
+        // that FindAllDescendants() silently skips.
+        private static AutomationElement? FindByNameAndType(
+            AutomationElement root,
+            string name,
+            FlaUI.Core.Definitions.ControlType type,
+            FlaUI.Core.ITreeWalker walker,
+            int depth = 0)
+        {
+            if (depth > 25) return null;   // guard against pathological trees
+
+            try
+            {
+                if (root.ControlType == type &&
+                    root.Name?.Equals(name, StringComparison.OrdinalIgnoreCase) == true)
+                    return root;
+            }
+            catch { /* element may have vanished */ }
+
+            AutomationElement? child = null;
+            try { child = walker.GetFirstChild(root); }
+            catch { return null; }
+
+            while (child != null)
+            {
+                var found = FindByNameAndType(child, name, type, walker, depth + 1);
+                if (found != null) return found;
+
+                AutomationElement? next = null;
+                try { next = walker.GetNextSibling(child); } catch { break; }
+                child = next;
+            }
             return null;
         }
     }
