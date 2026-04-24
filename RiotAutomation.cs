@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
@@ -21,10 +24,13 @@ namespace LeagueLogin.Services
             "RiotClientServices", "RiotClient", "RiotClientCrashHandler",
         };
 
-        private static readonly string[] FallbackRiotClientPaths = {
-            @"C:\Riot Games\Riot Client\RiotClientServices.exe",
-            @"C:\Program Files\Riot Games\Riot Client\RiotClientServices.exe",
-            @"C:\Program Files (x86)\Riot Games\Riot Client\RiotClientServices.exe",
+        // Relative subpaths under a root (drive or Program Files dir) where Riot
+        // Client is commonly installed. Combined with drive enumeration below to
+        // cover non-C installs.
+        private static readonly string[] RiotClientSubPaths = {
+            @"Riot Games\Riot Client\RiotClientServices.exe",
+            @"Program Files\Riot Games\Riot Client\RiotClientServices.exe",
+            @"Program Files (x86)\Riot Games\Riot Client\RiotClientServices.exe",
         };
 
         private const string LaunchArgs =
@@ -96,7 +102,7 @@ namespace LeagueLogin.Services
 
             while (DateTime.UtcNow < deadline)
             {
-                // ── 1. Find the Riot Client process ───────────────────────────
+                // ── 1. Find process ───────────────────────────────────────────
                 var processes = Process.GetProcessesByName("Riot Client");
                 if (processes.Length == 0)
                 {
@@ -105,100 +111,285 @@ namespace LeagueLogin.Services
                     continue;
                 }
 
-                // ── 2. Attach to the window ───────────────────────────────────
-                FlaUIApp? app = null;
+                // ── 2. Attach ─────────────────────────────────────────────────
                 AutomationElement? window = null;
                 try
                 {
-                    app    = FlaUIApp.Attach(processes[0]);
-                    window = app.GetMainWindow(automation);
+                    var app = FlaUIApp.Attach(processes[0]);
+                    window  = app.GetMainWindow(automation);
                 }
-                catch (Exception ex)
+                catch (Exception ex) { Log("Attach failed (" + ex.Message + ")"); Thread.Sleep(OuterRetryDelayMs); continue; }
+
+                if (window == null) { Log("Main window not ready..."); Thread.Sleep(OuterRetryDelayMs); continue; }
+
+                var walker = automation.TreeWalkerFactory.GetControlViewWalker();
+
+                // ── 3. Find fields ────────────────────────────────────────────
+                var userField = FindByAutomationId(window, "username", walker);
+                var passField = FindByAutomationId(window, "password",  walker);
+
+                if (userField == null || passField == null)
                 {
-                    Log("Attach failed (" + ex.Message + ") - retrying...");
+                    Log("Login fields not found yet...");
                     Thread.Sleep(OuterRetryDelayMs);
                     continue;
                 }
 
-                if (window == null)
+                // ── 4. Fill fields via ValuePattern (no keyboard/foreground) ──
+                Log("Filling username...");
+                if (!SetFieldValue(userField, username, Log))  { Thread.Sleep(OuterRetryDelayMs); continue; }
+                Thread.Sleep(150);
+
+                Log("Filling password...");
+                if (!SetFieldValue(passField, password, Log))  { Thread.Sleep(OuterRetryDelayMs); continue; }
+                Thread.Sleep(150);
+
+                // ── 5. Submit via Enter on whatever field is focused ──────────
+                // No Focus() call — that activates the window on Chromium. The
+                // login screen auto-focuses a field on load, so focus is already
+                // inside the form; SendEnterBackground resolves the focused
+                // HWND and posts directly to it.
+                var hwnd = new IntPtr(window.Properties.NativeWindowHandle.Value);
+                SendEnterBackground(hwnd, Log);
+                Log("Sign-in invoked (Enter).");
+
+                // Short probe: if fields disappear quickly, Enter worked.
+                bool enterWorked = false;
+                var enterDeadline = DateTime.UtcNow.AddSeconds(3);
+                while (DateTime.UtcNow < enterDeadline)
                 {
-                    Log("Main window not ready...");
-                    Thread.Sleep(OuterRetryDelayMs);
-                    continue;
-                }
-
-                // ── 3. Wait for login page to be ready ────────────────────────
-                // FindSignInButton is a page-readiness check — if the button
-                // isn't there yet the login screen hasn't fully loaded.
-                if (FindSignInButton(window, log) == null)
-                {
-                    Log("Sign-in button not found...");
-                    Thread.Sleep(OuterRetryDelayMs);
-                    continue;
-                }
-
-                // ── 4. Locate the input fields ────────────────────────────────
-                var usernameBox = window.FindFirstDescendant(cf =>
-                    cf.ByAutomationId("username")
-                      .And(cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)))?.AsTextBox();
-                var passwordBox = window.FindFirstDescendant(cf =>
-                    cf.ByAutomationId("password")
-                      .And(cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)))?.AsTextBox();
-
-                if (usernameBox == null || passwordBox == null)
-                {
-                    Log("Input fields not found...");
-                    Thread.Sleep(OuterRetryDelayMs);
-                    continue;
-                }
-
-                // ── 5. Fill and submit ────────────────────────────────────────
-                FillAndSubmit(usernameBox, passwordBox, username, password, 1, log);
-                Log("Sign-in invoked.");
-
-                // ── 6. Check + retry ──────────────────────────────────────────
-                const int MaxSubmitAttempts = 3;
-                const int PostSubmitWaitMs  = 3000;
-
-                for (int attempt = 1; attempt <= MaxSubmitAttempts; attempt++)
-                {
-                    Thread.Sleep(PostSubmitWaitMs);
-
-                    var uCheck = window.FindFirstDescendant(cf =>
-                        cf.ByAutomationId("username")
-                          .And(cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)));
-                    var pCheck = window.FindFirstDescendant(cf =>
-                        cf.ByAutomationId("password")
-                          .And(cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)));
-
-                    if (uCheck == null && pCheck == null)
+                    Thread.Sleep(300);
+                    if (FindByAutomationId(window, "username", walker) == null)
                     {
-                        Log("Login accepted.");
-                        return true;
-                    }
-
-                    if (attempt < MaxSubmitAttempts)
-                    {
-                        int nextAttempt = attempt + 1;
-                        bool slow = nextAttempt >= 3;
-                        Log($"Login not accepted after attempt {attempt}, clearing and retrying (attempt {nextAttempt}{(slow ? ", slow mode" : "")})...");
-
-                        // Clear fields first so React resets state cleanly
-                        ClearField(usernameBox, click: slow);
-                        ClearField(passwordBox, click: slow);
-                        Thread.Sleep(slow ? 300 : 100);
-
-                        FillAndSubmit(usernameBox, passwordBox, username, password, nextAttempt, log);
-                        Log($"Sign-in re-invoked (attempt {nextAttempt}).");
+                        enterWorked = true;
+                        break;
                     }
                 }
 
-                Log("Submit timed out - re-searching...");
-                Thread.Sleep(OuterRetryDelayMs);
+                if (enterWorked) { Log("Login accepted (Enter)."); return true; }
+
+                // ── 6. Fallback: find + invoke login button ───────────────────
+                Log("Enter didn't submit — falling back to button invoke.");
+                AutomationElement? loginBtn = null;
+                var btnDeadline = DateTime.UtcNow.AddSeconds(5);
+                while (DateTime.UtcNow < btnDeadline)
+                {
+                    loginBtn = FindNamelessActionButton(window, walker, Log);
+                    if (loginBtn != null) break;
+                    Log("Login button not enabled yet...");
+                    Thread.Sleep(500);
+                }
+
+                if (loginBtn == null) { Log("Login button not found — retrying from scratch..."); Thread.Sleep(OuterRetryDelayMs); continue; }
+
+                Log("Invoking login button...");
+                if (loginBtn.Patterns.Invoke.TryGetPattern(out var invokePat))
+                    invokePat.Invoke();
+                else if (loginBtn.Patterns.LegacyIAccessible.TryGetPattern(out var loginLegacy))
+                    loginLegacy.DoDefaultAction();
+                else
+                    loginBtn.Click();
+
+                Log("Sign-in invoked (button).");
+
+                // ── 7. Wait for login fields to disappear ─────────────────────
+                var submitDeadline = DateTime.UtcNow.AddSeconds(10);
+                while (DateTime.UtcNow < submitDeadline)
+                {
+                    Thread.Sleep(1000);
+                    var check = FindByAutomationId(window, "username", walker);
+                    if (check == null) { Log("Login accepted."); return true; }
+                }
+
+                Log("Login not accepted — retrying...");
             }
 
             Log("Login timeout reached.");
             return false;
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────────
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GUITHREADINFO
+        {
+            public int cbSize;
+            public uint flags;
+            public IntPtr hwndActive;
+            public IntPtr hwndFocus;
+            public IntPtr hwndCapture;
+            public IntPtr hwndMenuOwner;
+            public IntPtr hwndMoveSize;
+            public IntPtr hwndCaret;
+            public RECT rcCaret;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+
+        private const uint WM_KEYDOWN = 0x0100;
+        private const uint WM_KEYUP   = 0x0101;
+        private const uint WM_CHAR    = 0x0102;
+        private const int  VK_RETURN  = 0x0D;
+
+        /// Sends Enter to the Riot window in the background. Targets the focused
+        /// HWND in the window's UI thread (Chromium hosts a child HWND for input),
+        /// falling back to the top-level HWND. Also posts WM_CHAR since some
+        /// Chromium builds ignore WM_KEYDOWN/KEYUP but dispatch WM_CHAR to the
+        /// focused widget.
+        private static void SendEnterBackground(IntPtr topHwnd, Action<string> log)
+        {
+            var target = topHwnd;
+            try
+            {
+                uint tid = GetWindowThreadProcessId(topHwnd, out _);
+                var gti = new GUITHREADINFO { cbSize = Marshal.SizeOf<GUITHREADINFO>() };
+                if (GetGUIThreadInfo(tid, ref gti) && gti.hwndFocus != IntPtr.Zero)
+                    target = gti.hwndFocus;
+            }
+            catch (Exception ex) { log("GetGUIThreadInfo failed: " + ex.Message); }
+
+            PostMessage(target, WM_KEYDOWN, (IntPtr)VK_RETURN, (IntPtr)0x001C0001);
+            PostMessage(target, WM_CHAR,    (IntPtr)VK_RETURN, (IntPtr)0x001C0001);
+            PostMessage(target, WM_KEYUP,   (IntPtr)VK_RETURN, unchecked((IntPtr)0xC01C0001));
+        }
+
+        /// Sets an edit field's value via ValuePattern (no keyboard, no foreground needed).
+        /// Falls back to DoDefaultAction + SetValue if the pattern isn't directly available.
+        private static bool SetFieldValue(AutomationElement field, string value, Action<string> log)
+        {
+            try
+            {
+                if (field.Patterns.Value.TryGetPattern(out var vp))
+                {
+                    vp.SetValue(value);
+                    return true;
+                }
+                // Fallback: activate the field then try again
+                if (field.Patterns.LegacyIAccessible.TryGetPattern(out var leg))
+                    leg.DoDefaultAction();
+                Thread.Sleep(80);
+                if (field.Patterns.Value.TryGetPattern(out var vp2))
+                {
+                    vp2.SetValue(value);
+                    return true;
+                }
+                log("SetFieldValue: ValuePattern unavailable.");
+                return false;
+            }
+            catch (Exception ex) { log("SetFieldValue failed: " + ex.Message); return false; }
+        }
+
+        /// Finds the sign-in button: a Button that has a DefaultAction but NO Name.
+        /// That's exactly what Accessibility Insights reported for the Riot login button.
+        private static AutomationElement? FindNamelessActionButton(
+            AutomationElement root, FlaUI.Core.ITreeWalker walker, Action<string>? log)
+        {
+            var candidates = new List<AutomationElement>();
+            CollectButtons(root, walker, candidates, 0);
+
+            // Primary: nameless button with a DefaultAction (the submit button)
+            var nameless = candidates.Where(b =>
+            {
+                try
+                {
+                    string? n = null;
+                    try { n = b.Name; } catch { }
+                    if (!string.IsNullOrEmpty(n)) return false;
+
+                    if (!b.Patterns.LegacyIAccessible.TryGetPattern(out var p)) return false;
+                    return !string.IsNullOrWhiteSpace(p.DefaultAction);
+                }
+                catch { return false; }
+            }).ToList();
+
+            if (nameless.Count == 1) return nameless[0];
+
+            // Fallback: original minority-DefaultAction heuristic
+            var tagged = new List<(AutomationElement E, string A)>();
+            foreach (var btn in candidates)
+            {
+                try
+                {
+                    if (btn.Patterns.LegacyIAccessible.TryGetPattern(out var p) &&
+                        !string.IsNullOrWhiteSpace(p.DefaultAction))
+                        tagged.Add((btn, p.DefaultAction));
+                }
+                catch { }
+            }
+
+            if (tagged.Count == 0) return null;
+
+            var minority = tagged.GroupBy(t => t.A, StringComparer.OrdinalIgnoreCase)
+                                .OrderBy(g => g.Count()).First();
+            var majority = tagged.GroupBy(t => t.A, StringComparer.OrdinalIgnoreCase)
+                                .OrderByDescending(g => g.Count()).First();
+
+            if (minority.Key.Equals(majority.Key, StringComparison.OrdinalIgnoreCase)) return null;
+
+            log?.Invoke("Sign-in outlier: " + minority.Key);
+            return minority.First().E;
+        }
+
+        /// Recursively collects all Button elements via TreeWalker (crosses Chrome frames).
+        private static void CollectButtons(
+            AutomationElement root, FlaUI.Core.ITreeWalker walker,
+            List<AutomationElement> result, int depth)
+        {
+            if (depth > 25) return;
+            try
+            {
+                if (root.ControlType == FlaUI.Core.Definitions.ControlType.Button)
+                    result.Add(root);
+            }
+            catch { }
+
+            AutomationElement? child = null;
+            try { child = walker.GetFirstChild(root); } catch { return; }
+            while (child != null)
+            {
+                CollectButtons(child, walker, result, depth + 1);
+                AutomationElement? next = null;
+                try { next = walker.GetNextSibling(child); } catch { break; }
+                child = next;
+            }
+        }
+
+        /// Finds the first element with the given AutomationId via TreeWalker.
+        private static AutomationElement? FindByAutomationId(
+            AutomationElement root, string id, FlaUI.Core.ITreeWalker walker, int depth = 0)
+        {
+            if (depth > 25) return null;
+            try
+            {
+                if (root.AutomationId?.Equals(id, StringComparison.OrdinalIgnoreCase) == true)
+                    return root;
+            }
+            catch { }
+
+            AutomationElement? child = null;
+            try { child = walker.GetFirstChild(root); } catch { return null; }
+            while (child != null)
+            {
+                var found = FindByAutomationId(child, id, walker, depth + 1);
+                if (found != null) return found;
+                AutomationElement? next = null;
+                try { next = walker.GetNextSibling(child); } catch { break; }
+                child = next;
+            }
+            return null;
         }
 
         // ── Input helpers ─────────────────────────────────────────────────────
@@ -273,6 +464,32 @@ namespace LeagueLogin.Services
 
         private static string? FindRiotClientExe()
         {
+            // 1. Canonical: Riot's own install metadata at ProgramData.
+            //    This file is written by the Riot installer on every machine
+            //    regardless of chosen install directory, so it handles D:, custom
+            //    paths, etc. without guessing.
+            try
+            {
+                var metaPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Riot Games", "RiotClientInstalls.json");
+                if (File.Exists(metaPath))
+                {
+                    using var doc = JsonDocument.Parse(File.ReadAllText(metaPath));
+                    foreach (var key in new[] { "rc_live", "rc_default", "rc_beta" })
+                    {
+                        if (doc.RootElement.TryGetProperty(key, out var val) &&
+                            val.ValueKind == JsonValueKind.String)
+                        {
+                            var p = val.GetString();
+                            if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 2. Registry-registered handler for riotclient:// URIs.
             try
             {
                 using var key = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(@"riotclient\shell\open\command");
@@ -283,21 +500,64 @@ namespace LeagueLogin.Services
                 }
             }
             catch { }
-            foreach (var p in FallbackRiotClientPaths)
-                if (File.Exists(p)) return p;
+
+            // 3. Scan every fixed drive for common subpaths (C:, D:, E:, ...).
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (!drive.IsReady || drive.DriveType != DriveType.Fixed) continue;
+                foreach (var sub in RiotClientSubPaths)
+                {
+                    var candidate = Path.Combine(drive.RootDirectory.FullName, sub);
+                    if (File.Exists(candidate)) return candidate;
+                }
+            }
+
             return null;
         }
+
+        private static bool IsLeagueClientRunning()
+        {
+            return Process.GetProcessesByName("LeagueClient").Length > 0 ||
+                   Process.GetProcessesByName("LeagueClientUx").Length > 0;
+        }
+
+        private enum LaunchState { None, Play, Update, InProgress }
+
+        // Exact button Names (uppercased) that we should click to advance.
+        private static readonly string[] ActionableNames = { "PLAY", "UPDATE", "INSTALL", "CONTINUE" };
+
+        // Substrings (uppercased) that indicate a patch is running and the button
+        // should NOT be clicked — we wait for it to transition to Play.
+        private static readonly string[] ProgressSubstrings = {
+            "DOWNLOAD", "PREPAR", "UPDATING", "INSTALLING", "VERIF", "PATCH", "INITIAL"
+        };
+
+        private const int PlayInitialTimeoutSeconds = 30;
+        private const int PatchTimeoutSeconds = 2 * 60 * 60; // 2h — generous cap for large patches
 
         public static bool WaitAndClickPlay(Action<string>? log = null)
         {
             void Log(string m) => log?.Invoke(m);
             using var automation = new UIA3Automation();
-            var deadline = DateTime.UtcNow.AddSeconds(30);
+
+            var deadline         = DateTime.UtcNow.AddSeconds(PlayInitialTimeoutSeconds);
+            bool patchMode       = false;
+            bool dumpedDiagnostic = false;
+            string lastProgressName = "";
+            DateTime lastProgressLog = DateTime.MinValue;
 
             Log("Waiting for Play button on Riot Client home screen...");
 
             while (DateTime.UtcNow < deadline)
             {
+                // If League is already up, we're done — the Riot Client's home
+                // screen is now irrelevant.
+                if (IsLeagueClientRunning())
+                {
+                    Log("LeagueClient detected — launch successful.");
+                    return true;
+                }
+
                 var processes = Process.GetProcessesByName("Riot Client");
                 if (processes.Length == 0) { Thread.Sleep(1000); continue; }
 
@@ -307,42 +567,219 @@ namespace LeagueLogin.Services
                     var window = app.GetMainWindow(automation);
                     if (window == null) { Thread.Sleep(1000); continue; }
 
-                    var walker  = automation.TreeWalkerFactory.GetControlViewWalker();
-                    var playBtn = FindByNameAndType(
-                        window, "Play",
-                        FlaUI.Core.Definitions.ControlType.Button,
-                        walker);
+                    var walker = automation.TreeWalkerFactory.GetControlViewWalker();
+                    var (state, element, stateName) = ClassifyLaunchArea(window, walker);
 
-                    if (playBtn != null)
+                    switch (state)
                     {
-                        Log("Play button found — clicking.");
-                        
-                        // DoDefaultAction() goes through the IAccessible2 proxy directly —
-                        // no clickable-point calculation needed, works even when the window
-                        // isn't foregrounded.
-                        if (playBtn.Patterns.LegacyIAccessible.TryGetPattern(out var legacy))
-                        {
-                            legacy.DoDefaultAction();
-                            Log("DoDefaultAction invoked on Play button.");
-                        }
-                        else
-                        {
-                            // Should never reach here given the accessibility data you shared,
-                            // but fall back to a regular click just in case.
-                            playBtn.Click();
-                        }
-                        return true;
-                    }
+                        case LaunchState.Play:
+                            Log("Play button found — clicking.");
+                            InvokeElement(element!);
+                            Log("Play invoked.");
+                            return true;
 
-                    Log("Play button not visible yet...");
+                        case LaunchState.Update:
+                            Log($"Action button '{stateName}' found — clicking to start patch.");
+                            InvokeElement(element!);
+                            if (!patchMode)
+                            {
+                                patchMode = true;
+                                deadline = DateTime.UtcNow.AddSeconds(PatchTimeoutSeconds);
+                                Log("Entering patch-wait mode (timeout extended).");
+                            }
+                            if (!dumpedDiagnostic)
+                            {
+                                DumpUiTreeToDesktop(window, walker, "patch-update", Log);
+                                dumpedDiagnostic = true;
+                            }
+                            Thread.Sleep(2000);
+                            continue;
+
+                        case LaunchState.InProgress:
+                            if (!patchMode)
+                            {
+                                patchMode = true;
+                                deadline = DateTime.UtcNow.AddSeconds(PatchTimeoutSeconds);
+                                Log("Patch in progress — entering patch-wait mode.");
+                            }
+                            if (!dumpedDiagnostic)
+                            {
+                                DumpUiTreeToDesktop(window, walker, "patch-progress", Log);
+                                dumpedDiagnostic = true;
+                            }
+                            if (stateName != lastProgressName ||
+                                (DateTime.UtcNow - lastProgressLog).TotalSeconds > 30)
+                            {
+                                Log("Patch state: " + stateName);
+                                lastProgressName = stateName;
+                                lastProgressLog  = DateTime.UtcNow;
+                            }
+                            Thread.Sleep(2000);
+                            continue;
+
+                        default:
+                            if (!patchMode) Log("Play button not visible yet...");
+                            break;
+                    }
                 }
                 catch (Exception ex) { Log("WaitAndClickPlay: " + ex.Message); }
 
-                Thread.Sleep(1000);
+                Thread.Sleep(patchMode ? 2000 : 1000);
             }
 
-            Log("Timed out — falling back to re-invocation.");
+            // One last success check — League may have launched during the final
+            // sleep tick, in which case we shouldn't report timeout.
+            if (IsLeagueClientRunning())
+            {
+                Log("LeagueClient detected at deadline — launch successful.");
+                return true;
+            }
+
+            // Timeout: dump the current UI tree so the user can share it for diagnosis.
+            try
+            {
+                var procs = Process.GetProcessesByName("Riot Client");
+                if (procs.Length > 0)
+                {
+                    var app    = FlaUIApp.Attach(procs[0]);
+                    var window = app.GetMainWindow(automation);
+                    if (window != null)
+                    {
+                        var walker = automation.TreeWalkerFactory.GetControlViewWalker();
+                        DumpUiTreeToDesktop(window, walker, patchMode ? "patch-timeout" : "play-timeout", Log);
+                    }
+                }
+            }
+            catch (Exception ex) { Log("Timeout dump failed: " + ex.Message); }
+
+            Log(patchMode ? "Patch wait timed out." : "Timed out — falling back to re-invocation.");
             return false;
+        }
+
+        // ── UI tree diagnostic dump ───────────────────────────────────────────
+
+        private static void DumpUiTreeToDesktop(
+            AutomationElement root, FlaUI.Core.ITreeWalker walker,
+            string reason, Action<string> log)
+        {
+            try
+            {
+                var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                var stamp   = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                var path    = Path.Combine(desktop, $"LeagueLogin-ui-{reason}-{stamp}.txt");
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"# Riot Client UI tree — reason: {reason}");
+                sb.AppendLine($"# Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                sb.AppendLine();
+                DumpElementRecursive(root, walker, sb, 0);
+
+                File.WriteAllText(path, sb.ToString());
+                log($"UI tree dumped: {path}");
+            }
+            catch (Exception ex) { log("UI dump failed: " + ex.Message); }
+        }
+
+        private static void DumpElementRecursive(
+            AutomationElement el, FlaUI.Core.ITreeWalker walker,
+            StringBuilder sb, int depth)
+        {
+            if (depth > 30) return;
+
+            string name = "", id = "", type = "", enabled = "", value = "", defAction = "";
+            try { name    = el.Name ?? ""; } catch { }
+            try { id      = el.AutomationId ?? ""; } catch { }
+            try { type    = el.ControlType.ToString(); } catch { }
+            try { enabled = el.IsEnabled.ToString(); } catch { }
+            try
+            {
+                // Skip password-field values so credentials can't leak into a dump
+                // even if someone runs this while the login form is visible.
+                if (!id.Equals("password", StringComparison.OrdinalIgnoreCase) &&
+                    el.Patterns.Value.TryGetPattern(out var vp))
+                    value = vp.Value.Value ?? "";
+            }
+            catch { }
+            try
+            {
+                if (el.Patterns.LegacyIAccessible.TryGetPattern(out var leg))
+                    defAction = leg.DefaultAction ?? "";
+            }
+            catch { }
+
+            sb.Append(new string(' ', depth * 2));
+            sb.Append('[').Append(type).Append(']');
+            if (!string.IsNullOrEmpty(name))      sb.Append(" Name=\"").Append(Escape(name)).Append('"');
+            if (!string.IsNullOrEmpty(id))        sb.Append(" AutomationId=\"").Append(Escape(id)).Append('"');
+            if (!string.IsNullOrEmpty(enabled))   sb.Append(" IsEnabled=").Append(enabled);
+            if (!string.IsNullOrEmpty(value))     sb.Append(" Value=\"").Append(Escape(value)).Append('"');
+            if (!string.IsNullOrEmpty(defAction)) sb.Append(" DefaultAction=\"").Append(Escape(defAction)).Append('"');
+            sb.AppendLine();
+
+            AutomationElement? child = null;
+            try { child = walker.GetFirstChild(el); } catch { return; }
+            while (child != null)
+            {
+                DumpElementRecursive(child, walker, sb, depth + 1);
+                AutomationElement? next = null;
+                try { next = walker.GetNextSibling(child); } catch { break; }
+                child = next;
+            }
+        }
+
+        private static string Escape(string s) =>
+            s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+        private static (LaunchState state, AutomationElement? el, string name) ClassifyLaunchArea(
+            AutomationElement root, FlaUI.Core.ITreeWalker walker)
+        {
+            var buttons = new List<AutomationElement>();
+            CollectButtons(root, walker, buttons, 0);
+
+            AutomationElement? progressBtn = null;
+            string progressName = "";
+
+            foreach (var btn in buttons)
+            {
+                string? name;
+                try { name = btn.Name; } catch { continue; }
+                if (string.IsNullOrWhiteSpace(name)) continue;
+
+                var upper = name.Trim().ToUpperInvariant();
+
+                if (upper == "PLAY") return (LaunchState.Play, btn, name);
+
+                if (Array.IndexOf(ActionableNames, upper) >= 0)
+                {
+                    bool enabled = true;
+                    try { enabled = btn.IsEnabled; } catch { }
+                    if (enabled) return (LaunchState.Update, btn, name);
+                }
+
+                foreach (var sub in ProgressSubstrings)
+                {
+                    if (upper.Contains(sub))
+                    {
+                        progressBtn = btn;
+                        progressName = name;
+                        break;
+                    }
+                }
+            }
+
+            return progressBtn != null
+                ? (LaunchState.InProgress, progressBtn, progressName)
+                : (LaunchState.None, null, "");
+        }
+
+        private static void InvokeElement(AutomationElement el)
+        {
+            if (el.Patterns.Invoke.TryGetPattern(out var inv))
+                inv.Invoke();
+            else if (el.Patterns.LegacyIAccessible.TryGetPattern(out var legacy))
+                legacy.DoDefaultAction();
+            else
+                el.Click();
         }
 
         // Walks the full UIA tree recursively, including Chrome-hosted content
