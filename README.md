@@ -21,7 +21,7 @@ A pre-built installer is provided below for convenience, but **the author makes 
 
 ## Download (pre-built)
 
-[**LeagueLogin-1.1.0-x64.msi**](https://github.com/jduust/LeagueLogin/releases/download/v1.1.0/LeagueLogin-1.1.0-x64.msi)
+[**LeagueLogin-1.1.1-x64.msi**](https://github.com/jduust/LeagueLogin/releases/download/v1.1.1/LeagueLogin-1.1.1-x64.msi)
 
 Requires Windows 10 or later, x64. No .NET runtime required — it is bundled inside the installer.
 
@@ -128,7 +128,7 @@ wix extension add --global WixToolset.UI.wixext/6.0.2
 Then publish first (see above), then:
 
 ```powershell
-wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.1.0-x64.msi
+wix build installer.wxs -ext WixToolset.UI.wixext -o LeagueLogin-1.1.1-x64.msi
 ```
 
 Or use the helper script which builds the exe, the MSI, and (if Inno Setup is installed) the `.exe` setup in one go:

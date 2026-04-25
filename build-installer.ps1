@@ -23,7 +23,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # Single source of truth for the version string. Update when bumping.
-$Version   = "1.1.0"
+$Version   = "1.1.1"
 $Project   = "LeagueLogin.csproj"
 $OutDir    = "publish"
 $InnoDir   = "installer-output"
