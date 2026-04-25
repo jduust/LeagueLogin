@@ -19,7 +19,6 @@ namespace LeagueLogin
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
                 await RunHeadlessAsync(e.Args[1]);
-                Shutdown();
                 return;
             }
 
@@ -32,7 +31,6 @@ namespace LeagueLogin
                 {
                     ShutdownMode = ShutdownMode.OnExplicitShutdown;
                     await RunHeadlessAsync(pref!);
-                    Shutdown();
                     return;
                 }
                 // Guards failed — fall through to a normal (usually minimized) start.
@@ -110,6 +108,8 @@ namespace LeagueLogin
                     AccountMeta.RecordLaunch(accountName);
                     tray.ShowBalloon("League Login", "Logged in as " + accountName, WinForms.ToolTipIcon.Info, 2500);
                     Logger.Write("Headless login succeeded.");
+                    await Task.Delay(600);
+                    await Task.Run(() => RiotAutomation.WaitAndClickPlay(Logger.Write));
                 }
                 else
                 {
