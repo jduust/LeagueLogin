@@ -66,13 +66,60 @@
         <!-- ── Main content ──────────────────────────────────────── -->
         <Grid Grid.Row="1" x:Name="ContentGrid" Margin="20">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- update banner   -->
                 <RowDefinition Height="Auto"/> <!-- header          -->
                 <RowDefinition Height="*"/>    <!-- account list    -->
                 <RowDefinition Height="Auto"/> <!-- status bar      -->
             </Grid.RowDefinitions>
 
+            <!-- Update banner (collapsed by default; populated by Updater check) -->
+            <Border x:Name="UpdateBanner"
+                    Grid.Row="0"
+                    Visibility="Collapsed"
+                    Background="#FF1F1A2E"
+                    BorderBrush="{StaticResource Accent}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="12,10"
+                    Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock x:Name="UpdateBannerTitle"
+                               Text="Update available"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource Accent}"/>
+                    <TextBlock x:Name="UpdateBannerSubtitle"
+                               Text=""
+                               FontSize="11"
+                               Foreground="{StaticResource TextMuted}"
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,8"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="UpdateSkipBtn"
+                                Style="{StaticResource NeutralButtonStyle}"
+                                Padding="10,5" FontSize="11"
+                                Margin="0,0,6,0"
+                                Click="UpdateSkip_Click">
+                            <TextBlock Text="Skip this version" Foreground="{StaticResource TextPrimary}"/>
+                        </Button>
+                        <Button x:Name="UpdateNotesBtn"
+                                Style="{StaticResource NeutralButtonStyle}"
+                                Padding="10,5" FontSize="11"
+                                Margin="0,0,6,0"
+                                Click="UpdateNotes_Click">
+                            <TextBlock Text="Release notes" Foreground="{StaticResource TextPrimary}"/>
+                        </Button>
+                        <Button x:Name="UpdateInstallBtn"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="10,5" FontSize="11"
+                                Click="UpdateInstall_Click">
+                            <TextBlock x:Name="UpdateInstallText" Text="Download &amp; install"/>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Header -->
-            <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid Grid.Row="1" Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -100,11 +147,11 @@
                 </Button>
             </Grid>
 
-            <Rectangle Grid.Row="0" Height="1" VerticalAlignment="Bottom"
+            <Rectangle Grid.Row="1" Height="1" VerticalAlignment="Bottom"
                        Fill="#FF2A2A4A" Margin="0,0,0,-4"/>
 
             <!-- Account list -->
-            <ScrollViewer Grid.Row="1"
+            <ScrollViewer Grid.Row="2"
                           VerticalScrollBarVisibility="Auto"
                           Margin="0,8,0,8">
                 <StackPanel x:Name="AccountPanel">
@@ -120,7 +167,7 @@
             </ScrollViewer>
 
             <!-- Status bar -->
-            <Border Grid.Row="2"
+            <Border Grid.Row="3"
                     Background="#FF0A0A18"
                     CornerRadius="4"
                     Padding="10,6"

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Settings"
-        Height="260" Width="320"
+        Height="460" Width="320"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         WindowStyle="None"
@@ -56,9 +56,23 @@
                       Content="Start minimized to tray"
                       Foreground="{StaticResource TextPrimary}"
                       FontSize="12"
-                      Margin="0,0,0,20"
+                      Margin="0,0,0,8"
                       Checked="ChkStartMinimized_Changed"
                       Unchecked="ChkStartMinimized_Changed"/>
+
+            <CheckBox x:Name="ChkAutoLoginOnBoot"
+                      Content="Auto-login to preferred account on boot"
+                      Foreground="{StaticResource TextPrimary}"
+                      FontSize="12"
+                      Margin="0,0,0,4"
+                      Checked="ChkAutoLoginOnBoot_Changed"
+                      Unchecked="ChkAutoLoginOnBoot_Changed"/>
+
+            <TextBlock x:Name="LblPreferred"
+                       FontSize="10"
+                       Foreground="{StaticResource TextMuted}"
+                       TextWrapping="Wrap"
+                       Margin="22,0,0,20"/>
 
             <TextBlock Text="WINDOW"
                        FontSize="10" FontWeight="Bold"
@@ -68,12 +82,41 @@
             <CheckBox x:Name="ChkMinimizeOnClose"
                     Foreground="{StaticResource TextPrimary}"
                     FontSize="12"
-                    Margin="0,0,0,0"
+                    Margin="0,0,0,20"
                     Checked="ChkMinimizeOnClose_Changed"
                     Unchecked="ChkMinimizeOnClose_Changed">
-                <TextBlock Text="Minimize to tray instead of exiting on close" 
+                <TextBlock Text="Minimize to tray instead of exiting on close"
                         TextWrapping="Wrap"/>
             </CheckBox>
+
+            <TextBlock Text="UPDATES"
+                       FontSize="10" FontWeight="Bold"
+                       Foreground="{StaticResource TextMuted}"
+                       Margin="0,0,0,10"/>
+
+            <CheckBox x:Name="ChkAutoUpdate"
+                      Content="Check for updates on startup"
+                      Foreground="{StaticResource TextPrimary}"
+                      FontSize="12"
+                      Margin="0,0,0,8"
+                      Checked="ChkAutoUpdate_Changed"
+                      Unchecked="ChkAutoUpdate_Changed"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <Button x:Name="CheckNowBtn"
+                        Style="{StaticResource NeutralButtonStyle}"
+                        Content="Check now"
+                        FontSize="11"
+                        Padding="10,5"
+                        Click="CheckNow_Click"/>
+                <TextBlock x:Name="UpdateStatus"
+                           Text=""
+                           FontSize="11"
+                           Foreground="{StaticResource TextMuted}"
+                           VerticalAlignment="Center"
+                           Margin="10,0,0,0"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
 
         </StackPanel>
     </Grid>

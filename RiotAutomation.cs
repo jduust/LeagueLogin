@@ -532,8 +532,10 @@ namespace LeagueLogin.Services
             "DOWNLOAD", "PREPAR", "UPDATING", "INSTALLING", "VERIF", "PATCH", "INITIAL"
         };
 
-        private const int PlayInitialTimeoutSeconds = 30;
-        private const int PatchTimeoutSeconds = 2 * 60 * 60; // 2h — generous cap for large patches
+        private const int PlayInitialTimeoutSeconds   = 30;
+        private const int PatchTimeoutSeconds         = 2 * 60 * 60; // 2h — generous cap for large patches
+        private const int PlayLaunchTimeoutSeconds    = 5 * 60;      // after clicking Play, how long to wait for LeagueClient
+        private const int PlayReclickIntervalSeconds  = 3;           // minimum gap between re-clicks of Play
 
         public static bool WaitAndClickPlay(Action<string>? log = null)
         {
@@ -545,6 +547,14 @@ namespace LeagueLogin.Services
             bool dumpedDiagnostic = false;
             string lastProgressName = "";
             DateTime lastProgressLog = DateTime.MinValue;
+
+            // Post-click verification state: once Play has been invoked, we keep
+            // looping (up to PlayLaunchTimeoutSeconds) to confirm the LeagueClient
+            // process appears. If Play re-appears (click didn't register), re-click
+            // — but not more often than PlayReclickIntervalSeconds.
+            bool     playInvoked  = false;
+            int      playClicks   = 0;
+            DateTime lastPlayClick = DateTime.MinValue;
 
             Log("Waiting for Play button on Riot Client home screen...");
 
@@ -573,10 +583,34 @@ namespace LeagueLogin.Services
                     switch (state)
                     {
                         case LaunchState.Play:
-                            Log("Play button found — clicking.");
-                            InvokeElement(element!);
-                            Log("Play invoked.");
-                            return true;
+                        {
+                            double sinceLast = (DateTime.UtcNow - lastPlayClick).TotalSeconds;
+                            if (!playInvoked)
+                            {
+                                Log("Play button found — clicking.");
+                                InvokeElement(element!);
+                                playClicks++;
+                                lastPlayClick = DateTime.UtcNow;
+                                playInvoked   = true;
+                                // Give LeagueClient a generous window to appear.
+                                deadline = DateTime.UtcNow.AddSeconds(PlayLaunchTimeoutSeconds);
+                                Log("Play invoked — verifying LeagueClient launches...");
+                            }
+                            else if (sinceLast >= PlayReclickIntervalSeconds)
+                            {
+                                // Play is still showing after a prior click — the
+                                // click didn't land (Riot Client sometimes eats
+                                // clicks if the button rendered too early). Try again.
+                                playClicks++;
+                                Log($"LeagueClient not running and Play still visible — re-clicking (attempt {playClicks}).");
+                                InvokeElement(element!);
+                                lastPlayClick = DateTime.UtcNow;
+                                deadline = DateTime.UtcNow.AddSeconds(PlayLaunchTimeoutSeconds);
+                            }
+                            // Fall through to the loop's bottom sleep; next
+                            // iteration checks IsLeagueClientRunning at the top.
+                            break;
+                        }
 
                         case LaunchState.Update:
                             Log($"Action button '{stateName}' found — clicking to start patch.");
@@ -635,7 +669,26 @@ namespace LeagueLogin.Services
                 return true;
             }
 
-            // Timeout: dump the current UI tree so the user can share it for diagnosis.
+            // Pick the dump tag + log message for whichever phase we timed out in.
+            string dumpReason;
+            string logMessage;
+            if (playInvoked)
+            {
+                dumpReason = "post-play-no-launch";
+                logMessage = $"Play was clicked {playClicks}x but LeagueClient never started. Giving up.";
+            }
+            else if (patchMode)
+            {
+                dumpReason = "patch-timeout";
+                logMessage = "Patch wait timed out.";
+            }
+            else
+            {
+                dumpReason = "play-timeout";
+                logMessage = "Timed out — falling back to re-invocation.";
+            }
+
+            // Dump the current UI tree so the user can share it for diagnosis.
             try
             {
                 var procs = Process.GetProcessesByName("Riot Client");
@@ -646,13 +699,13 @@ namespace LeagueLogin.Services
                     if (window != null)
                     {
                         var walker = automation.TreeWalkerFactory.GetControlViewWalker();
-                        DumpUiTreeToDesktop(window, walker, patchMode ? "patch-timeout" : "play-timeout", Log);
+                        DumpUiTreeToDesktop(window, walker, dumpReason, Log);
                     }
                 }
             }
             catch (Exception ex) { Log("Timeout dump failed: " + ex.Message); }
 
-            Log(patchMode ? "Patch wait timed out." : "Timed out — falling back to re-invocation.");
+            Log(logMessage);
             return false;
         }
 

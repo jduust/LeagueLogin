@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using LeagueLogin.Services;
 using MessageBox = System.Windows.MessageBox;
@@ -52,7 +53,16 @@ namespace LeagueLogin
             }
 
             if (labelChanged)
+            {
+                // Full rename: move the credential, move usage metadata, and
+                // update the preferred-account pointer if this was it. Without
+                // this, the old label leaves a ghost reference in Settings.
                 CredentialStore.DeleteAccount(_originalLabel!);
+                AccountMeta.Rename(_originalLabel!, name);
+                if (string.Equals(Settings.PreferredAccount, _originalLabel,
+                                   StringComparison.OrdinalIgnoreCase))
+                    Settings.PreferredAccount = name;
+            }
 
             CredentialStore.SaveAccount(name, user, pass);
             Logger.Write("Account saved: " + name);

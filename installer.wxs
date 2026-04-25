@@ -8,7 +8,7 @@
 
   <Package
     Name="League Login"
-    Version="1.0.4"
+    Version="1.1.0"
     Manufacturer="LeagueLogin"
     UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
     Scope="perMachine"
@@ -19,6 +19,16 @@
       Schedule="afterInstallInitialize"/>
 
     <MediaTemplate EmbedCab="yes" CompressionLevel="high"/>
+
+    <!--
+      ARP (Add/Remove Programs) metadata. Shows up in Settings → Apps and in
+      the legacy Programs and Features control panel.
+    -->
+    <Property Id="ARPURLINFOABOUT"    Value="https://github.com/jduust/LeagueLogin"/>
+    <Property Id="ARPHELPLINK"        Value="https://github.com/jduust/LeagueLogin/issues"/>
+    <Property Id="ARPURLUPDATEINFO"   Value="https://github.com/jduust/LeagueLogin/releases"/>
+    <Property Id="ARPNOREPAIR"        Value="yes"/>
+    <!-- ARPNOMODIFY is set by WixUI_InstallDir itself; don't duplicate here. -->
 
     <!--
       WixUI_InstallDir: Welcome -> License -> InstallDir -> Progress -> Finish.
@@ -48,6 +58,26 @@
     -->
     <Property Id="INSTALL_DESKTOP" Value="1"/>
     <Property Id="INSTALL_STARTUP" Value="1"/>
+
+    <!--
+      Exit-dialog "Launch League Login now" checkbox. The text property makes
+      the checkbox visible; the value "1" pre-ticks it.
+    -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"
+              Value="Launch League Login now"/>
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
+
+    <!--
+      CustomAction that launches the exe after install. Uses Directory + the
+      [INSTALLFOLDER]LeagueLogin.exe path so no WixToolset.Util extension is
+      required. Impersonate="yes" so it runs as the installing user (not SYSTEM)
+      and the tray icon shows up in their session.
+    -->
+    <CustomAction Id="LaunchLeagueLogin"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="[INSTALLFOLDER]LeagueLogin.exe"
+                  Impersonate="yes"
+                  Return="asyncNoWait"/>
 
     <!-- Install directory -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -202,6 +232,15 @@
 
       <Publish Dialog="InstallDirDlg" Control="Back"
                Event="NewDialog" Value="OptionsDlg" Condition="1"/>
+
+      <!--
+        Fire LaunchLeagueLogin when the user clicks Finish with the
+        "Launch now" checkbox ticked. Only on fresh install/upgrade — not
+        on repair or uninstall (NOT Installed means "not previously installed").
+      -->
+      <Publish Dialog="ExitDialog" Control="Finish"
+               Event="DoAction" Value="LaunchLeagueLogin"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed"/>
 
     </UI>
 
